@@ -202,8 +202,11 @@ function Client:get_providers(supported_method)
 
   for _, provider_name in ipairs(provider_names) do
     local provider = providers[provider_name]
-    if provider and not provider.disabled and (not supported_method or provider[supported_method]) then
-      out:set(provider_name, provider)
+    -- Filter out non-provider entries (functions starting with _)
+    if provider and type(provider) == 'table' and not provider_name:match('^_') then
+      if not provider.disabled and (not supported_method or provider[supported_method]) then
+        out:set(provider_name, provider)
+      end
     end
   end
   return out
@@ -616,6 +619,7 @@ end
 function Client:running()
   return self.current_job ~= nil
 end
+
 
 --- @type CopilotChat.client.Client
 return Client()

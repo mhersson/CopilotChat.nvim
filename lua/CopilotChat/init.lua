@@ -1039,6 +1039,11 @@ function M.setup(config)
     proxy = M.config.proxy,
   })
 
+  -- Pass GHE configuration to providers if available
+  if M.config.copilot_chat then
+    M.config.providers._set_ghe_config(M.config.copilot_chat)
+  end
+
   -- Load the providers
   client:stop()
   client:add_providers(function()
