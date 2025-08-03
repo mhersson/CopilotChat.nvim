@@ -238,6 +238,22 @@ Most users only need to configure a few options:
 }
 ```
 
+## GitHub Enterprise Configuration
+
+For GitHub Enterprise (GHE) users, you can configure custom endpoints:
+
+```lua
+{
+  copilot_chat = {
+    api_url = 'https://copilot-api.your-domain.ghe.com/chat/completions',
+    auth_url = 'https://api.your-domain.ghe.com/copilot_internal/v2/token',
+    models_url = 'https://copilot-api.your-domain.ghe.com/models'
+  },
+}
+```
+
+Replace `your-domain` with your actual GHE server domain. If not specified, the plugin defaults to GitHub's public servers.
+
 ## Buffer Behavior
 
 ```lua

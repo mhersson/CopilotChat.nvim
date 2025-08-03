@@ -52,6 +52,7 @@
 ---@field functions table<string, CopilotChat.config.functions.Function>?
 ---@field prompts table<string, CopilotChat.config.prompts.Prompt|string>?
 ---@field mappings CopilotChat.config.mappings?
+---@field copilot_chat table<string, string>?
 return {
 
   -- Shared config starts here (can be passed to functions at runtime and configured via setup function)
@@ -128,4 +129,12 @@ return {
 
   -- default mappings
   mappings = require('CopilotChat.config.mappings'),
+
+  -- GitHub Enterprise configuration (optional)
+  copilot_chat = nil, -- Set to configure custom endpoints, e.g.:
+  -- copilot_chat = {
+  --   api_url = 'https://copilot-api.your-domain.ghe.com/chat/completions',
+  --   auth_url = 'https://api.your-domain.ghe.com/copilot_internal/v2/token',
+  --   models_url = 'https://copilot-api.your-domain.ghe.com/models'
+  -- },
 }
