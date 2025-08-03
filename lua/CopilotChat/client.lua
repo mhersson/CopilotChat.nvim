@@ -702,9 +702,13 @@ end
 
 --- Load providers to client
 function Client:load_providers(providers)
-  self.providers = providers
-  for provider_name, _ in pairs(providers) do
-    self.provider_cache[provider_name] = {}
+  self.providers = {}
+  -- Filter out non-provider entries (functions starting with _)
+  for provider_name, provider in pairs(providers) do
+    if type(provider) == 'table' and not provider_name:match('^_') then
+      self.providers[provider_name] = provider
+      self.provider_cache[provider_name] = {}
+    end
   end
 end
 

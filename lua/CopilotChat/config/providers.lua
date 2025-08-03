@@ -4,6 +4,9 @@ local plenary_utils = require('plenary.async.util')
 
 local EDITOR_VERSION = 'Neovim/' .. vim.version().major .. '.' .. vim.version().minor .. '.' .. vim.version().patch
 
+-- Store configuration for GHE endpoints
+local _ghe_config = {}
+
 local token_cache = nil
 local unsaved_token_cache = {}
 local function load_tokens()
@@ -49,7 +52,11 @@ end
 ---@return string
 local function github_device_flow(tag, client_id, scope)
   local function request_device_code()
-    local res = utils.curl_post('https://github.com/login/device/code', {
+    local config = _ghe_config
+    local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+    local github_url = auth_url:match('https://api%.(.-)%.com') or 'github'
+    local device_code_url = 'https://' .. github_url .. '.com/login/device/code'
+    local res = utils.curl_post(device_code_url, {
       body = {
         client_id = client_id,
         scope = scope,
@@ -65,7 +72,11 @@ local function github_device_flow(tag, client_id, scope)
     while true do
       plenary_utils.sleep(interval * 1000)
 
-      local res = utils.curl_post('https://github.com/login/oauth/access_token', {
+      local config = _ghe_config
+      local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+      local github_url = auth_url:match('https://api%.(.-)%.com') or 'github'
+      local access_token_url = 'https://' .. github_url .. '.com/login/oauth/access_token'
+      local res = utils.curl_post(access_token_url, {
         body = {
           client_id = client_id,
           device_code = device_code,
@@ -145,7 +156,10 @@ local function get_github_copilot_token(tag)
         local parsed_data = utils.json_decode(file_data)
         if parsed_data then
           for key, value in pairs(parsed_data) do
-            if string.find(key, 'github.com') and value and value.oauth_token then
+            local config = _ghe_config
+            local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+            local github_host = auth_url:match('https://api%.(.-)%.com') or 'github'
+            if string.find(key, github_host .. '.com') and value and value.oauth_token then
               return set_token(tag, value.oauth_token, false)
             end
           end
@@ -172,7 +186,10 @@ local function get_github_models_token(tag)
 
   -- loading token from gh cli if available
   if vim.fn.executable('gh') == 0 then
-    local result = utils.system({ 'gh', 'auth', 'token', '-h', 'github.com' })
+    local config = _ghe_config
+    local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+    local github_host = auth_url:match('https://api%.(.-)%.com') or 'github'
+    local result = utils.system({ 'gh', 'auth', 'token', '-h', github_host .. '.com' })
     if result and result.code == 0 and result.stdout then
       local gh_token = vim.trim(result.stdout)
       if gh_token ~= '' and not gh_token:find('no oauth token') then
@@ -208,11 +225,21 @@ end
 ---@type table<string, CopilotChat.config.providers.Provider>
 local M = {}
 
+-- Function to set GHE config (private, not a provider)
+local function set_ghe_config(config)
+  _ghe_config = config or {}
+end
+
+-- Export the function without adding it to the providers table
+M._set_ghe_config = set_ghe_config
+
 M.copilot = {
   embed = 'copilot_embeddings',
 
   get_headers = function()
-    local response, err = utils.curl_get('https://api.github.com/copilot_internal/v2/token', {
+    local config = _ghe_config
+    local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+    local response, err = utils.curl_get(auth_url, {
       json_response = true,
       headers = {
         ['Authorization'] = 'Token ' .. get_github_copilot_token('github_copilot'),
@@ -233,7 +260,10 @@ M.copilot = {
   end,
 
   get_info = function(headers)
-    local response, err = utils.curl_get('https://api.github.com/copilot_internal/user', {
+    local config = _ghe_config
+    local auth_url = config.auth_url or 'https://api.github.com/copilot_internal/v2/token'
+    local base_url = auth_url:gsub('/copilot_internal/v2/token$', '')
+    local response, err = utils.curl_get(base_url .. '/copilot_internal/user', {
       json_response = true,
       headers = {
         ['Authorization'] = 'Token ' .. get_github_copilot_token('github_copilot'),
@@ -283,7 +313,9 @@ M.copilot = {
   end,
 
   get_models = function(headers)
-    local response, err = utils.curl_get('https://api.githubcopilot.com/models', {
+    local config = _ghe_config
+    local models_url = config.models_url or 'https://api.githubcopilot.com/models'
+    local response, err = utils.curl_get(models_url, {
       json_response = true,
       headers = headers,
     })
@@ -323,7 +355,9 @@ M.copilot = {
 
     for _, model in ipairs(models) do
       if not model.policy then
-        utils.curl_post('https://api.githubcopilot.com/models/' .. model.id .. '/policy', {
+        local config = _ghe_config
+        local models_url = config.models_url or 'https://api.githubcopilot.com/models'
+        utils.curl_post(models_url:gsub('/models$', '') .. '/models/' .. model.id .. '/policy', {
           headers = headers,
           json_request = true,
           body = { state = 'enabled' },
@@ -447,7 +481,8 @@ M.copilot = {
   end,
 
   get_url = function()
-    return 'https://api.githubcopilot.com/chat/completions'
+    local config = _ghe_config
+    return config.api_url or 'https://api.githubcopilot.com/chat/completions'
   end,
 }
 
@@ -502,7 +537,10 @@ M.copilot_embeddings = {
   get_headers = M.copilot.get_headers,
 
   embed = function(inputs, headers)
-    local response, err = utils.curl_post('https://api.githubcopilot.com/embeddings', {
+    local config = _ghe_config
+    local api_url = config.api_url or 'https://api.githubcopilot.com/chat/completions'
+    local embeddings_url = api_url:gsub('/chat/completions$', '/embeddings')
+    local response, err = utils.curl_post(embeddings_url, {
       headers = headers,
       json_request = true,
       json_response = true,
